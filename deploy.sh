@@ -1,4 +1,4 @@
-APP_NAME=zwave-control-panel
+APP_NAME=openzwave-control-panel
 
 echo "Building $APP_NAME image"
 docker build -t $APP_NAME .
