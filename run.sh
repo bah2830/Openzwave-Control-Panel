@@ -1,5 +1,5 @@
 # Set the network key if supplied
-if [[ ! -z "${NETWORK_KEY}" ]]; then
+if [ -n "$NETWORK_KEY" ]; then
     sed -i 's/\(NetworkKey" value="\).*/\1'"$NETWORK_KEY"'" \/>/g' /app/Openzwave-control-panel/config/options.xml
 fi
 
