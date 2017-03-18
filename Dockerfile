@@ -13,6 +13,7 @@ WORKDIR /app
 # Install openzwave
 RUN git clone https://github.com/OpenZWave/open-zwave.git open-zwave \
     && cd open-zwave \
+    && git checkout Dev \
     && make \
     && make install
 
