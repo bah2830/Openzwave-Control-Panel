@@ -34,7 +34,10 @@ RUN git clone https://github.com/OpenZWave/open-zwave-control-panel.git Openzwav
     && sed -i 's/#\(LIBS\)/\1/g' Makefile \
     && sed -i -e 's/\(LIBMICROHTTPD\) := .*/\1 := \/usr\/local\/lib\/libmicrohttpd.a/g' Makefile \
     && make \
-    && ln -sd ../open-zwave/config
+    && ln -sd ../open-zwave/config \
+    && sed -i 's/<!-- \(<Option name="NetworkKey".*\) -->/\1/g' config/options.xml
 
-WORKDIR /app/Openzwave-control-panel
-CMD ["./ozwcp", "-p", "8008"]
+COPY run.sh /
+
+WORKDIR /
+CMD ./run.sh
