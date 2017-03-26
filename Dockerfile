@@ -1,7 +1,7 @@
 FROM ubuntu:xenial
 MAINTAINER brentahughes@gmail.com
 
-COPY ozwcp.patch /
+COPY openzwave_patch.diff /
 
 # Install some dependencies
 RUN apt-get update \
@@ -13,7 +13,7 @@ WORKDIR /app
 # Install openzwave
 RUN git clone https://github.com/OpenZWave/open-zwave.git open-zwave \
     && cd open-zwave \
-    && git checkout Dev \
+    && git apply -v /openzwave_patch.diff \
     && make \
     && make install
 
@@ -29,7 +29,6 @@ RUN wget https://ftp.gnu.org/gnu/libmicrohttpd/libmicrohttpd-0.9.52.tar.gz \
 # Install openzwave-control-panel
 RUN git clone https://github.com/OpenZWave/open-zwave-control-panel.git Openzwave-control-panel \
     && cd Openzwave-control-panel \
-    && git apply /ozwcp.patch \
     && sed -i '/# for Mac OS/,+5d' Makefile \
     && sed -i 's/#\(LIBUSB\)/\1/g' Makefile \
     && sed -i 's/#\(LIBS\)/\1/g' Makefile \

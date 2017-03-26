@@ -1,0 +1,256 @@
+diff --git a/config/device_classes.xml b/config/device_classes.xml
+index 7c98919..0122148 100644
+--- a/config/device_classes.xml
++++ b/config/device_classes.xml
+@@ -184,6 +184,8 @@
+   <DeviceType key="0x0c04" label="Heat Alarm Sensor" command_classes="0x5a,0x5e,0x59,0x72,0x73,0x85,0x86,0x30"/>
+   <DeviceType key="0x0c05" label="Water Alarm Sensor" command_classes="0x5a,0x5e,0x59,0x72,0x73,0x85,0x86,0x30"/>
+   <DeviceType key="0x0c06" label="Access Control Sensor" command_classes="0x5a,0x5e,0x59,0x72,0x73,0x85,0x86,0x30"/>
++  <DeviceType key="0x0c06" label="Access Control Sensor" command_classes="0x5a,0x5e,0x59,0x66,0x72,0x73,0x85,0x86,0x30"/>
++  <DeviceType key="0x0c06" label="Access Control Sensor" command_classes="0x5a,0x5e,0x59,0x72,0x73,0x85,0x86,0x30"/>
+   <DeviceType key="0x0c07" label="Home Security Sensor" command_classes="0x5a,0x5e,0x59,0x72,0x73,0x85,0x86,0x30"/>
+   <DeviceType key="0x0c08" label="Power Management Sensor" command_classes="0x5a,0x5e,0x59,0x72,0x73,0x85,0x86,0x30"/>
+   <DeviceType key="0x0c09" label="System Sensor" command_classes="0x5a,0x5e,0x59,0x72,0x73,0x85,0x86,0x30"/>
+diff --git a/cpp/src/command_classes/BarrierOperator.cpp b/cpp/src/command_classes/BarrierOperator.cpp
+new file mode 100644
+index 0000000..7843847
+--- /dev/null
++++ b/cpp/src/command_classes/BarrierOperator.cpp
+@@ -0,0 +1,170 @@
++#include "command_classes/CommandClasses.h"
++#include "command_classes/BarrierOperator.h"
++#include "Defs.h"
++#include "Msg.h"
++#include "Node.h"
++#include "Driver.h"
++#include "platform/Log.h"
++
++#include "value_classes/ValueByte.h"
++#include "value_classes/ValueBool.h"
++
++using namespace OpenZWave;
++
++enum BarrierOperatorCmd
++{
++   BarrierOperatorCmd_Set = 0x01,
++   BarrierOperatorCmd_Get = 0x02,
++   BarrierOperatorCmd_Report = 0x03,
++   BarrierOperatorCmd_SignalSupportedGet = 0x04,
++   BarrierOperatorCmd_SignalSupportedReport = 0x05,
++   BarrierOperatorCmd_SignalSet = 0x06,
++   BarrierOperatorCmd_SignalGet = 0x07,
++   BarrierOperatorCmd_SignalReport = 0x06
++};
++
++enum BarrierOperatorState
++{
++   BarrierOperatorState_Closed = 0x00,
++   BarrierOperatorState_Closing = 0xFC,
++   BarrierOperatorState_Stopped = 0xFD,
++   BarrierOperatorState_Opening = 0xFE,
++   BarrierOperatorState_Open = 0xFF,
++};
++
++BarrierOperator::BarrierOperator
++(
++       uint32 const _homeId,
++       uint8 const _nodeId
++):
++CommandClass( _homeId, _nodeId )
++{
++}
++
++
++//-----------------------------------------------------------------------------
++// <Alarm::RequestState>
++// Request current state from the device
++//-----------------------------------------------------------------------------
++bool BarrierOperator::RequestState
++(
++       uint32 const _requestFlags,
++       uint8 const _instance,
++       Driver::MsgQueue const _queue
++)
++{
++   if( _requestFlags & RequestFlag_Dynamic )
++   {
++       return RequestValue( _requestFlags, 0, _instance, _queue );
++   }
++
++   return false;
++}
++
++//-----------------------------------------------------------------------------
++// <Alarm::RequestValue>
++// Request current value from the device
++//-----------------------------------------------------------------------------
++bool BarrierOperator::RequestValue
++(
++       uint32 const _requestFlags,
++       uint8 const _dummy1,    // = 0 (not used)
++       uint8 const _instance,
++       Driver::MsgQueue const _queue
++)
++{
++   if (IsGetSupported())
++   {
++       Log::Write(LogLevel_Info, GetNodeId(), "Requesting BarrierOperator status");
++       Msg* msg = new Msg("BarrierOperatorCmd_Get", GetNodeId(), REQUEST, FUNC_ID_ZW_SEND_DATA, true, true, FUNC_ID_APPLICATION_COMMAND_HANDLER, GetCommandClassId());
++       msg->SetInstance(this, _instance);
++       msg->Append(GetNodeId());
++       msg->Append(2);
++       msg->Append(GetCommandClassId());
++       msg->Append(BarrierOperatorCmd_Get);
++       msg->Append(GetDriver()->GetTransmitOptions());
++       GetDriver()->SendMsg(msg, _queue);
++       return true;
++   }
++   else {
++       Log::Write(LogLevel_Info, GetNodeId(), "BarrierOperatorCmd_Get Not Supported on this node");
++   }
++   return false;
++}
++
++//-----------------------------------------------------------------------------
++// <Alarm::HandleMsg>
++// Handle a message from the Z-Wave network
++//-----------------------------------------------------------------------------
++bool BarrierOperator::HandleMsg
++(
++       uint8 const* _data,
++       uint32 const _length,
++       uint32 const _instance  // = 1
++)
++{
++   if (BarrierOperatorCmd_Report == (BarrierOperatorCmd)_data[0])
++   {
++       const char* state = "Unknown";
++       if (_data[1] == BarrierOperatorState_Closed) state = "Closed";
++       else if (_data[1] == BarrierOperatorState_Closing) state = "Closing";
++       else if (_data[1] == BarrierOperatorState_Stopped) state = "Stopped";
++       else if (_data[1] == BarrierOperatorState_Opening) state = "Opening";
++       else if (_data[1] == BarrierOperatorState_Open) state = "Open";
++
++       Log::Write(LogLevel_Info, GetNodeId(), "Received BarrierOperator report: Barrier is %s", state);
++
++       if (_data[1] == BarrierOperatorState_Open || _data[1] == BarrierOperatorState_Closed)
++       {
++           if (ValueBool* value = static_cast<ValueBool*>(GetValue(_instance, 0)))
++           {
++               value->OnValueRefreshed(_data[1] != BarrierOperatorState_Closed);
++               value->Release();
++           }
++       }
++       return true;
++   }
++
++   return false;
++}
++
++bool BarrierOperator::SetValue
++(
++   Value const& _value
++   )
++{
++   if (ValueID::ValueType_Bool == _value.GetID().GetType())
++   {
++       ValueBool const* value = static_cast<ValueBool const*>(&_value);
++
++       Log::Write(LogLevel_Info, GetNodeId(), "BarrierOperator::Set - Requesting barrier to be %s", value->GetValue() ? "Open" : "Closed");
++       Msg* msg = new Msg("LockCmd_Get", GetNodeId(), REQUEST, FUNC_ID_ZW_SEND_DATA, true);
++       msg->SetInstance(this, _value.GetID().GetInstance());
++       msg->Append(GetNodeId());
++       msg->Append(3);
++       msg->Append(GetCommandClassId());
++       msg->Append(BarrierOperatorCmd_Set);
++       msg->Append(value->GetValue() ? 0xFF : 0x00);
++       msg->Append(GetDriver()->GetTransmitOptions());
++       GetDriver()->SendMsg(msg, Driver::MsgQueue_Send);
++       return true;
++   }
++
++   return false;
++}
++
++//-----------------------------------------------------------------------------
++// <Alarm::CreateVars>
++// Create the values managed by this command class
++//-----------------------------------------------------------------------------
++void BarrierOperator::CreateVars
++(
++       uint8 const _instance
++)
++{
++   if (Node* node = GetNodeUnsafe())
++   {
++       node->CreateValueBool(ValueID::ValueGenre_User, GetCommandClassId(), _instance, 0, "Open", "", false, false, false, 0);
++   }
++}
++
+diff --git a/cpp/src/command_classes/BarrierOperator.h b/cpp/src/command_classes/BarrierOperator.h
+new file mode 100644
+index 0000000..e177409
+--- /dev/null
++++ b/cpp/src/command_classes/BarrierOperator.h
+@@ -0,0 +1,41 @@
++#ifndef _BarrierOperator_H
++#define _BarrierOperator_H
++
++#include "command_classes/CommandClass.h"
++
++namespace OpenZWave
++{
++   class ValueByte;
++   class ValueBool;
++
++   /** \brief Implements COMMAND_CLASS_BARRIER_OPERATOR (0x66), a Z-Wave device command class.
++    */
++   class BarrierOperator: public CommandClass
++   {
++   public:
++       static CommandClass* Create( uint32 const _homeId, uint8 const _nodeId ){ return new BarrierOperator( _homeId, _nodeId ); }
++       virtual ~BarrierOperator(){}
++
++       static uint8 const StaticGetCommandClassId(){ return 0x66; }
++       static string const StaticGetCommandClassName(){ return "COMMAND_CLASS_BARRIER_OPERATOR"; }
++
++       // From CommandClass
++       virtual bool RequestState( uint32 const _requestFlags, uint8 const _instance, Driver::MsgQueue const _queue );
++       virtual bool RequestValue( uint32 const _requestFlags, uint8 const _index, uint8 const _instance, Driver::MsgQueue const _queue );
++       virtual uint8 const GetCommandClassId()const{ return StaticGetCommandClassId(); }
++       virtual string const GetCommandClassName()const{ return StaticGetCommandClassName(); }
++       virtual bool HandleMsg( uint8 const* _data, uint32 const _length, uint32 const _instance = 1 );
++       virtual bool SetValue(Value const& _value);
++
++       virtual uint8 GetMaxVersion(){ return 3; }
++
++   protected:
++       virtual void CreateVars( uint8 const _instance );
++
++   private:
++       BarrierOperator( uint32 const _homeId, uint8 const _nodeId );
++   };
++
++} // namespace OpenZWave
++
++#endif
+diff --git a/cpp/src/command_classes/CommandClasses.cpp b/cpp/src/command_classes/CommandClasses.cpp
+index 2cea75a..9d0394c 100644
+--- a/cpp/src/command_classes/CommandClasses.cpp
++++ b/cpp/src/command_classes/CommandClasses.cpp
+@@ -35,6 +35,7 @@ using namespace OpenZWave;
+ #include "command_classes/ApplicationStatus.h"
+ #include "command_classes/Association.h"
+ #include "command_classes/AssociationCommandConfiguration.h"
++#include "command_classes/BarrierOperator.h"
+ #include "command_classes/Basic.h"
+ #include "command_classes/BasicWindowCovering.h"
+ #include "command_classes/Battery.h"
+@@ -187,6 +188,7 @@ void CommandClasses::RegisterCommandClasses
+ 	cc.Register( ApplicationStatus::StaticGetCommandClassId(), ApplicationStatus::StaticGetCommandClassName(), ApplicationStatus::Create );
+ 	cc.Register( Association::StaticGetCommandClassId(), Association::StaticGetCommandClassName(), Association::Create );
+ 	cc.Register( AssociationCommandConfiguration::StaticGetCommandClassId(), AssociationCommandConfiguration::StaticGetCommandClassName(), AssociationCommandConfiguration::Create );
++   cc.Register( BarrierOperator::StaticGetCommandClassId(), BarrierOperator::StaticGetCommandClassName(), BarrierOperator::Create);
+ 	cc.Register( Basic::StaticGetCommandClassId(), Basic::StaticGetCommandClassName(), Basic::Create );
+ 	cc.Register( BasicWindowCovering::StaticGetCommandClassId(), BasicWindowCovering::StaticGetCommandClassName(), BasicWindowCovering::Create );
+ 	cc.Register( Battery::StaticGetCommandClassId(), Battery::StaticGetCommandClassName(), Battery::Create );
